@@ -1,0 +1,3 @@
+[submodule "envconsul"]
+	path = envconsul
+	url = https://github.com/Warfront1/envconsul

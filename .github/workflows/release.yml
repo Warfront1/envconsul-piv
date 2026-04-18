@@ -1,0 +1,158 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  get-version:
+    name: Determine release version
+    runs-on: ubuntu-latest
+    outputs:
+      upstream-version: ${{ steps.version.outputs.upstream-version }}
+      piv-version: ${{ steps.version.outputs.piv-version }}
+      full-version: ${{ steps.version.outputs.full-version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Determine version
+        id: version
+        run: |
+          UPSTREAM_VERSION=$(awk -F\" '/^[[:space:]]+Version[[:space:]]*=/ { print $2; exit }' envconsul/version/version.go)
+
+          git fetch --tags --quiet
+          EXISTING_PIV=$(git tag -l "v${UPSTREAM_VERSION}-piv*" \
+            | sed "s/v${UPSTREAM_VERSION}-piv//" \
+            | grep -E '^[0-9]+$' \
+            | sort -n \
+            | tail -1 || true)
+
+          if [ -z "$EXISTING_PIV" ]; then
+            PIV_VERSION=1
+          else
+            PIV_VERSION=$((EXISTING_PIV + 1))
+          fi
+
+          FULL_VERSION="v${UPSTREAM_VERSION}-piv${PIV_VERSION}"
+
+          echo "upstream-version=${UPSTREAM_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "piv-version=${PIV_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "full-version=${FULL_VERSION}" >> "$GITHUB_OUTPUT"
+
+          echo "Upstream version: ${UPSTREAM_VERSION}"
+          echo "PIV version:      ${PIV_VERSION}"
+          echo "Full version:      ${FULL_VERSION}"
+
+  build:
+    name: Build linux/${{ matrix.arch }}
+    needs: get-version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+          - arch: arm64
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f0c2f0c3c6263ac01c801e4b4f8a0e63 # v3.6.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd88eb4577d842784f0c7a832978e3 # v3.10.6
+
+      - name: Build binary
+        run: |
+          GIT_COMMIT=$(git -C envconsul rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          docker buildx build \
+            --platform linux/${{ matrix.arch }} \
+            --load \
+            -f Dockerfile.pkcs11 \
+            -t envconsul-piv-builder \
+            --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+            .
+
+      - name: Extract binary
+        run: |
+          docker create --name envconsul-extract envconsul-piv-builder
+          docker cp envconsul-extract:/bin/envconsul-piv envconsul-piv
+          docker rm envconsul-extract
+          chmod +x envconsul-piv
+          file envconsul-piv
+
+      - name: Smoke test (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          ./envconsul-piv -v
+
+      - name: Package release archive
+        run: |
+          FULL_VERSION="${{ needs.get-version.outputs.full-version }}"
+          ARCH="${{ matrix.arch }}"
+          ARTIFACT_NAME="envconsul-piv_${FULL_VERSION}_linux_${ARCH}"
+
+          mkdir -p "${ARTIFACT_NAME}"
+          cp envconsul-piv "${ARTIFACT_NAME}/"
+          cp envconsul/LICENSE "${ARTIFACT_NAME}/LICENSE.txt"
+
+          tar -czf "${ARTIFACT_NAME}.tar.gz" "${ARTIFACT_NAME}"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: envconsul-piv_${{ needs.get-version.outputs.full-version }}_linux_${{ matrix.arch }}.tar.gz
+          path: envconsul-piv_${{ needs.get-version.outputs.full-version }}_linux_${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Create release
+    needs: [get-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd release-artifacts
+          sha256sum *.tar.gz > SHA256SUMS.txt
+
+      - name: Create tag and push
+        run: |
+          TAG="${{ needs.get-version.outputs.full-version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} already exists"
+            exit 1
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@da05d552573b6f51ab9fdfa644d4a5e35d3e0acd # v2.2.2
+        with:
+          tag_name: ${{ needs.get-version.outputs.full-version }}
+          name: ${{ needs.get-version.outputs.full-version }}
+          body: |
+            envconsul-piv ${{ needs.get-version.outputs.full-version }}
+
+            Built from envconsul v${{ needs.get-version.outputs.upstream-version }} with PKCS#11 (YubiKey) support.
+
+            **Binaries:**
+            - `envconsul-piv_${{ needs.get-version.outputs.full-version }}_linux_amd64.tar.gz` — Linux x86_64
+            - `envconsul-piv_${{ needs.get-version.outputs.full-version }}_linux_arm64.tar.gz` — Linux ARM64 (aarch64)
+          files: release-artifacts/*

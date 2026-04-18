@@ -1,0 +1,45 @@
+# Copyright IBM Corp. 2014, 2025
+# SPDX-License-Identifier: MPL-2.0
+#
+# Build-only Dockerfile for envconsul with PKCS#11 (YubiKey) support.
+# Produces a dynamically-linked binary. Copy it out and run on bare metal.
+#
+# Build:
+#   docker build -f Dockerfile.pkcs11 -t envconsul-piv-builder .
+#
+# Extract the binary:
+#   docker cp $(docker create envconsul-piv-builder):/bin/envconsul-piv ./envconsul-piv
+#   # or:
+#   docker create --name envconsul-extract envconsul-piv-builder
+#   docker cp envconsul-extract:/bin/envconsul-piv ./envconsul-piv
+#   docker rm envconsul-extract
+
+FROM golang:1.25-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libltdl-dev \
+    libpcsclite-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+COPY envconsul/go.mod envconsul/go.sum ./
+RUN go mod download
+
+COPY envconsul/ .
+
+ARG GIT_COMMIT=unknown
+
+RUN CGO_ENABLED=1 go build \
+    -tags "pkcs11" \
+    -ldflags "-s -w \
+      -X github.com/hashicorp/envconsul/version.Name=envconsul \
+      -X github.com/hashicorp/envconsul/version.GitCommit=${GIT_COMMIT}" \
+    -o /bin/envconsul-piv \
+    .
+
+# Scratch stage so `docker cp` grabs just the binary
+FROM scratch AS export
+COPY --from=builder /bin/envconsul-piv /bin/envconsul-piv
+CMD ["/bin/envconsul-piv"]

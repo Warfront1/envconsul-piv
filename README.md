@@ -7,9 +7,8 @@ envconsul with hardware-bound mutual TLS. Your YubiKey or any PIV token signs th
 ```mermaid
 flowchart LR
     USER(["👤 User"]) -->|Authenticate with| YUBI["🔑 YubiKey\n(PIV)"]
-    YUBI -->|"Signs TLS handshake\non-device — private key\nnever leaves hardware"| VAULT["🗝️ HashiCorp Vault KV2\n compliant API"]
-    VAULT -->|"Returns secrets over\nencrypted channel"| RENDER["📋 Inject secrets"]
-    RENDER -->|Pass to| APP(["⚙️ Your Application"])
+    YUBI -->|"Signs TLS handshake\non-device — private key\nnever leaves hardware"| VAULT["🗝️ HashiCorp Vault KV2\ncompliant API"]
+    VAULT -->|"Scoped secrets — only your\napplication can access."| APP(["⚙️ Your Application"])
 
     style YUBI fill:#2d5a3d,stroke:#4caf50,color:#fff
     style VAULT fill:#1a3a5c,stroke:#2196f3,color:#fff

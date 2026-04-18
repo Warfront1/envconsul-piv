@@ -105,7 +105,7 @@ jobs:
           cp envconsul-piv "${ARTIFACT_NAME}/"
           cp envconsul/LICENSE "${ARTIFACT_NAME}/LICENSE.txt"
 
-          tar -czf "${ARTIFACT_NAME}.tar.gz" "${ARTIFACT_NAME}"
+          tar -czf "${ARTIFACT_NAME}.tar.gz" -C "${ARTIFACT_NAME}" envconsul-piv LICENSE.txt
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

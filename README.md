@@ -117,6 +117,8 @@ sudo systemctl enable --now pcscd
 
 This also works on Windows using the Windows Subsystem for Linux (WSL) with [usbipd-win](https://github.com/dorssel/usbipd-win) to forward USB devices (like your YubiKey) into WSL.
 
+While this guide demonstrates setup with a YubiKey, envconsul-piv works with any PKCS#11-compatible PIV token. The only requirement is a PKCS#11 shared library (like `opensc-pkcs11.so`) that exposes the token's signing capability.
+
 ### Environment Variables
 
 Set the following environment variables in your shell or `.bashrc`. Replace the placeholders with your actual configuration values.

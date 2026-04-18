@@ -3,6 +3,8 @@ name: release
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,7 @@ jobs:
       piv-version: ${{ steps.version.outputs.piv-version }}
       full-version: ${{ steps.version.outputs.full-version }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: true
@@ -61,15 +63,15 @@ jobs:
           - arch: amd64
           - arch: arm64
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f0c2f0c3c6263ac01c801e4b4f8a0e63 # v3.6.0
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@b5ca514318bd88eb4577d842784f0c7a832978e3 # v3.10.6
+        uses: docker/setup-buildx-action@v4
 
       - name: Build binary
         run: |
@@ -114,15 +116,16 @@ jobs:
 
   release:
     name: Create release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [get-version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           merge-multiple: true
@@ -143,7 +146,7 @@ jobs:
           git push origin "$TAG"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@da05d552573b6f51ab9fdfa644d4a5e35d3e0acd # v2.2.2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.get-version.outputs.full-version }}
           name: ${{ needs.get-version.outputs.full-version }}

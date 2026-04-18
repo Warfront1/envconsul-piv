@@ -102,6 +102,21 @@ sudo mv envconsul-piv /usr/local/bin/envconsul-piv
 
 ## Configuration and Usage Guide
 
+### YubiKey Setup
+
+If you haven't already configured your YubiKey for PIV use, install `ykman` and dependencies on Ubuntu/Debian:
+
+```bash
+sudo apt-add-repository ppa:yubico/stable
+sudo apt update
+sudo apt install -y yubikey-manager pcscd opensc
+sudo systemctl enable --now pcscd
+```
+
+> For other distributions, see [Yubico's ykman install guide](https://docs.yubico.com/software/yubikey/tools/ykman/Install_ykman.html#third-party-linux-distributions).
+
+This also works on Windows using the Windows Subsystem for Linux (WSL) with [usbipd-win](https://github.com/dorssel/usbipd-win) to forward USB devices (like your YubiKey) into WSL.
+
 ### Environment Variables
 
 Set the following environment variables in your shell or `.bashrc`. Replace the placeholders with your actual configuration values.
